@@ -30,6 +30,7 @@ const pathText = document.getElementById('pathText');
 const folderInput = document.getElementById('folderInput');
 const analyzeBtn = document.getElementById('analyzeBtn');
 const includeSmokeCheckbox = document.getElementById('includeSmoke');
+const hideUncoveredCheckbox = document.getElementById('hideUncovered');
 const statusEl = document.getElementById('status');
 const treeContainer = document.getElementById('treeContainer');
 const statsContainer = document.getElementById('statsContainer');
@@ -56,6 +57,17 @@ folderInput.addEventListener('change', () => {
   clearResults();
   setStatus('');
 });
+
+/* ==========================================================================
+   «Скрывать непокрытые» — переключается мгновенно, без повторного анализа.
+   Группировки (Справочники, Документы и т.д.) остаются на экране всегда,
+   даже если после скрытия в них не осталось ни одной строки.
+   ========================================================================== */
+hideUncoveredCheckbox.addEventListener('change', updateHideUncovered);
+
+function updateHideUncovered() {
+  treeContainer.classList.toggle('hide-uncovered', hideUncoveredCheckbox.checked);
+}
 
 /* ==========================================================================
    Запуск анализа
@@ -89,6 +101,8 @@ async function runAnalysis() {
       return;
     }
 
+    const hasDiscoveryIssue = smokeFiles.length === 0 || bddFiles.length === 0;
+
     statusLines.push(`Configuration.xml: найден (${configFile.webkitRelativePath})`);
     statusLines.push(`Дымовые тесты (features\\smoke): найдено ${smokeFiles.length} файл(ов)`);
     statusLines.push(`Сценарные тесты (features\\bdd): найдено ${bddFiles.length} файл(ов)`);
@@ -115,9 +129,10 @@ async function runAnalysis() {
 
     /* ---- 5. Вывод дерева и статистики ---- */
     renderTree(elements);
+    updateHideUncovered();
     renderStats(elements, includeSmoke);
 
-    setStatus(statusLines.join('\n'));
+    setStatus(hasDiscoveryIssue ? statusLines.join('\n') : '');
   } finally {
     analyzeBtn.disabled = false;
   }
@@ -218,12 +233,32 @@ function renderTree(elements) {
     groupElements.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 
     const group = document.createElement('div');
-    group.className = 'tree-group';
+    group.className = 'tree-group collapsed';
 
-    const title = document.createElement('h2');
-    title.className = 'tree-group__title';
-    title.textContent = `${TAG_MAP[tag]} (${groupElements.length})`;
-    group.appendChild(title);
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'tree-group__toggle';
+    toggle.setAttribute('aria-expanded', 'false');
+
+    const icon = document.createElement('span');
+    icon.className = 'tree-group__icon';
+    icon.textContent = '+';
+    icon.setAttribute('aria-hidden', 'true');
+
+    const titleText = document.createElement('span');
+    titleText.className = 'tree-group__title-text';
+    const coveredCount = groupElements.filter((el) => el.covered).length;
+    const groupPercent = (coveredCount / groupElements.length * 100).toFixed(2);
+    titleText.textContent = `${TAG_MAP[tag]} (${coveredCount}/${groupElements.length}, ${groupPercent}%)`;
+
+    toggle.appendChild(icon);
+    toggle.appendChild(titleText);
+    toggle.addEventListener('click', () => {
+      const collapsed = group.classList.toggle('collapsed');
+      toggle.setAttribute('aria-expanded', String(!collapsed));
+      icon.textContent = collapsed ? '+' : '-';
+    });
+    group.appendChild(toggle);
 
     const list = document.createElement('ul');
     list.className = 'tree-list';
